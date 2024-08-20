@@ -10,7 +10,6 @@ const app = express();
 
 app.use(bodyParser.json());
 
-// Connecting to the database
 
 //middlewares
 app.use('/api/employees',employeesRoutes);
