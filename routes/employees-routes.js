@@ -7,7 +7,7 @@ const employeeController = require('../controllers/employee-controller');
 const router = express.Router();
 
 
-router.get('/:eid', employeeController.getEmployeeById);
+router.get('/', employeeController.getEmployees);
 
 router.post('/', employeeController.createEmployee);
 
