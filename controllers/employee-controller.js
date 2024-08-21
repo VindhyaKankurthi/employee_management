@@ -41,7 +41,12 @@ let DUMMY_EMPLOYEES = [
 const getEmployees = async (req,res,next) => {
     try {
         const data = await connection.promise().query(
-          `SELECT *  from employee;`
+          `SELECT e.empID, e.empFirstName, e.empMiddleName, e.empLastName, e.empEmail, e.empDOB, e.empJobTitle,
+              d.deptName,
+              a.addressLine1, a.addressLine2, a.city, a.state, a.zip, a.emContact, a.emPhone, a.homePhone
+                FROM employee e
+                JOIN department d ON e.deptID = d.deptID
+                JOIN employee_address a ON e.empID = a.empID;`
         );
         res.status(202).json({
           employee: data[0],
@@ -56,31 +61,70 @@ const getEmployees = async (req,res,next) => {
 //  creating employee API
 const createEmployee = async (req, res, next) => {
     try{
-        const { empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle } = req.body;
-        const [result] = await connection.promise().query(
-            `INSERT INTO employee (
-                empFirstName,
-                empMiddleName, 
-                empLastName,
-                empEmail,
-                empDOB, 
-                empJobTitle
-            ) 
-            VALUES (?,?,?,?,?,?)`,
-            [empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle]
-          );
+        const { deptName, empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle,
+                addressLine1, addressLine2, city, state, zip, emContact, emPhone, homePhone
+         } = req.body;
 
-          // Check if the employee was created successfully
-            if (result.affectedRows === 1) {
-                return res.status(201).json({
-                message: "Employee created successfully",
-                employeeId: result.insertId,
+        connection.beginTransaction((err) => {
+            if (err) throw err;
+    
+            const insertDepartment = `INSERT INTO department (deptName) VALUES (?)`;
+            connection.query(insertDepartment, [deptName], (err, result) => {
+                if(err) {
+                    return connection.rollback(() => {
+                        throw err;
+                    });
+                }
+
+                const deptID = result.insertId;
+                console.log("departmentId.."+deptID);
+            
+            
+            const insertEmployee = `INSERT INTO employee (
+                                        empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle, deptID) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?)`;
+                connection.query(
+                    insertEmployee, [empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle, deptID], 
+                        (err, result) => {
+                    if (err) {
+                        return connection.rollback(() => {
+                            throw err;
+                        });
+                    }
+    
+                const empID = result.insertId;
+                console.log("employeeId.."+empID);
+    
+                const insertAddress = `INSERT INTO employee_address (
+                                        addressLine1, addressLine2, city, state, 
+                                        zip, emContact, emPhone, homePhone, empID) 
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                connection.query(insertAddress, [addressLine1, addressLine2, city, state, 
+                    zip, emContact, emPhone, homePhone, empID], (err, result) => {
+                    if (err) {
+                        return connection.rollback(() => {
+                            throw err;
+                        });
+                    }
+    
+                    connection.commit((err) => {
+                        if (err) {
+                            return connection.rollback(() => {
+                                throw err;
+                            });
+                        }
+                        res.send('Employee created');
+                    });
                 });
-            } else {
-                throw new Error("Failed to create employee");
-            }
+            });
+
+        })
+
+        });
+
         } catch (err) {
-          res.status(500).json({
+            await connection.promise().rollback();
+            res.status(500).json({
             message: err.message || "An error occurred while creating the employee",
           });
         }
@@ -88,23 +132,70 @@ const createEmployee = async (req, res, next) => {
 
 
 
-const updateEmployee = (req, res, next) => {
-    const { firstname, lastname, email, department, address } = req.body;
-    const empId = req.params.eid;
-
-    const updatedEmployee = {...DUMMY_EMPLOYEES.find(e => e.id === empId) };
-    const employeeIndex = DUMMY_EMPLOYEES.findIndex(e => e.id === empId);
-
-    updatedEmployee.firstname = firstname;
-    updatedEmployee.lastname = lastname;
-    updatedEmployee.email = email;
-    updatedEmployee.department = department;
-    updatedEmployee.address = address;
-
-    DUMMY_EMPLOYEES[employeeIndex] = updatedEmployee;
-
-    res.status(200).json({employee: updatedEmployee});
-};
+    const updateEmployee = async (req, res, next) => {
+        const { empID } = req.params;
+        const { deptName, empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle,
+                addressLine1, addressLine2, city, state, zip, emContact, emPhone, homePhone } = req.body;
+      
+        try {
+          connection.beginTransaction((err) => {
+            if (err) throw err;
+      
+            // Update the department first
+            const updateDepartment = `UPDATE department d
+                                      JOIN employee e ON e.deptID = d.deptID
+                                      SET d.deptName = ?
+                                      WHERE e.empID = ?`;
+            connection.query(updateDepartment, [deptName, empID], (err, result) => {
+              if (err) {
+                return connection.rollback(() => {
+                  throw err;
+                });
+              }
+      
+              // Update the employee details
+              const updateEmployee = `UPDATE employee
+                                      SET empFirstName = ?, empMiddleName = ?, empLastName = ?, empEmail = ?, empDOB = ?, empJobTitle = ?
+                                      WHERE empID = ?`;
+              connection.query(updateEmployee, [empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle, empID], (err, result) => {
+                if (err) {
+                  return connection.rollback(() => {
+                    throw err;
+                  });
+                }
+      
+                // Update the employee address details
+                const updateAddress = `UPDATE employee_address
+                                       SET addressLine1 = ?, addressLine2 = ?, city = ?, state = ?, zip = ?, emContact = ?, emPhone = ?, homePhone = ?
+                                       WHERE empID = ?`;
+                connection.query(updateAddress, [addressLine1, addressLine2, city, state, zip, emContact, emPhone, homePhone, empID], (err, result) => {
+                  if (err) {
+                    return connection.rollback(() => {
+                      throw err;
+                    });
+                  }
+      
+                  // Commit the transaction
+                  connection.commit((err) => {
+                    if (err) {
+                      return connection.rollback(() => {
+                        throw err;
+                      });
+                    }
+                    res.status(200).json({
+                      message: 'Employee updated successfully',
+                    });
+                  });
+                });
+              });
+            });
+          });
+        } catch (err) {
+          res.status(500).json({
+            message: err.message || 'An error occurred while updating the employee',
+          });
+        }
+      };
 
 const deleteEmployee = (req, res, next) => {
     const empId = req.params.eid;

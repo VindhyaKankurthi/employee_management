@@ -11,7 +11,7 @@ router.get('/', employeeController.getEmployees);
 
 router.post('/', employeeController.createEmployee);
 
-router.patch('/:eid', employeeController.updateEmployee);
+router.patch('/:empID', employeeController.updateEmployee);
 
 router.delete('/:eid', employeeController.deleteEmployee);
 
