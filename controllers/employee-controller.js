@@ -132,23 +132,70 @@ const createEmployee = async (req, res, next) => {
 
 
 
-const updateEmployee = (req, res, next) => {
-    const { firstname, lastname, email, department, address } = req.body;
-    const empId = req.params.eid;
-
-    const updatedEmployee = {...DUMMY_EMPLOYEES.find(e => e.id === empId) };
-    const employeeIndex = DUMMY_EMPLOYEES.findIndex(e => e.id === empId);
-
-    updatedEmployee.firstname = firstname;
-    updatedEmployee.lastname = lastname;
-    updatedEmployee.email = email;
-    updatedEmployee.department = department;
-    updatedEmployee.address = address;
-
-    DUMMY_EMPLOYEES[employeeIndex] = updatedEmployee;
-
-    res.status(200).json({employee: updatedEmployee});
-};
+    const updateEmployee = async (req, res, next) => {
+        const { empID } = req.params;
+        const { deptName, empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle,
+                addressLine1, addressLine2, city, state, zip, emContact, emPhone, homePhone } = req.body;
+      
+        try {
+          connection.beginTransaction((err) => {
+            if (err) throw err;
+      
+            // Update the department first
+            const updateDepartment = `UPDATE department d
+                                      JOIN employee e ON e.deptID = d.deptID
+                                      SET d.deptName = ?
+                                      WHERE e.empID = ?`;
+            connection.query(updateDepartment, [deptName, empID], (err, result) => {
+              if (err) {
+                return connection.rollback(() => {
+                  throw err;
+                });
+              }
+      
+              // Update the employee details
+              const updateEmployee = `UPDATE employee
+                                      SET empFirstName = ?, empMiddleName = ?, empLastName = ?, empEmail = ?, empDOB = ?, empJobTitle = ?
+                                      WHERE empID = ?`;
+              connection.query(updateEmployee, [empFirstName, empMiddleName, empLastName, empEmail, empDOB, empJobTitle, empID], (err, result) => {
+                if (err) {
+                  return connection.rollback(() => {
+                    throw err;
+                  });
+                }
+      
+                // Update the employee address details
+                const updateAddress = `UPDATE employee_address
+                                       SET addressLine1 = ?, addressLine2 = ?, city = ?, state = ?, zip = ?, emContact = ?, emPhone = ?, homePhone = ?
+                                       WHERE empID = ?`;
+                connection.query(updateAddress, [addressLine1, addressLine2, city, state, zip, emContact, emPhone, homePhone, empID], (err, result) => {
+                  if (err) {
+                    return connection.rollback(() => {
+                      throw err;
+                    });
+                  }
+      
+                  // Commit the transaction
+                  connection.commit((err) => {
+                    if (err) {
+                      return connection.rollback(() => {
+                        throw err;
+                      });
+                    }
+                    res.status(200).json({
+                      message: 'Employee updated successfully',
+                    });
+                  });
+                });
+              });
+            });
+          });
+        } catch (err) {
+          res.status(500).json({
+            message: err.message || 'An error occurred while updating the employee',
+          });
+        }
+      };
 
 const deleteEmployee = (req, res, next) => {
     const empId = req.params.eid;
